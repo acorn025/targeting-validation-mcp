@@ -11,12 +11,11 @@ def validate_targeting_conditions(
     region: str
 ) -> dict:
     """
-    광고 타겟 설정의 유효성을 검사하고 데이터 표준화를 수행합니다.
+    광고 타겟 설정의 데이터 정규화 및 설정 오류를 검증합니다.
     """
     warnings = []
     
-    # 1. 입력값 정규화 (자연어 입력 대응)
-    # 성별: '남성', '남자', 'male' 등 대응
+    # 1. 입력값 정규화 (Normalization)
     gender_map = {"남": "MALE", "여": "FEMALE", "M": "MALE", "F": "FEMALE"}
     normalized_gender = gender.upper()
     for k, v in gender_map.items():
@@ -26,44 +25,48 @@ def validate_targeting_conditions(
     if normalized_gender not in ["MALE", "FEMALE"]:
         normalized_gender = "ALL"
 
-    # 지역: '서울시', 'seoul' 등 대응
     region_upper = region.upper().replace(" ", "").replace("시", "").replace("도", "")
 
-    # 2. 연령대 파싱 로직 강화 (정규표현식 사용)
-    age_numbers = [0, 100] # 기본값: 전연령
+    # 2. 연령대 파싱 로직 개선 (범위 인식)
+    age_numbers = [0, 100]
     try:
-        # 숫자만 추출 (예: "20-30대" -> [20, 30])
         extracted_ages = re.findall(r'\d+', age_range)
         if len(extracted_ages) >= 2:
+            # "20-30" -> [20, 30]
             age_numbers = [int(extracted_ages[0]), int(extracted_ages[1])]
         elif len(extracted_ages) == 1:
-            age_numbers = [int(extracted_ages[0]), int(extracted_ages[0])]
+            age_val = int(extracted_ages[0])
+            if "대" in age_range:
+                # "20대" -> [20, 29]
+                age_numbers = [age_val, age_val + 9]
+            else:
+                # "20세" -> [20, 20]
+                age_numbers = [age_val, age_val]
     except Exception:
-        pass # 파싱 실패 시 기본값(0-100) 유지
+        pass
 
-    # 3. 검증 로직 (실패 조건)
+    # 3. 필수값 검증
     if not interests or not region:
         return {
             "success": False,
-            "error": "관심사와 지역 정보는 필수입니다."
+            "error": "필수 타겟팅 정보(관심사 또는 지역)가 누락되었습니다."
         }
 
-    # 4. 경고 조건 (정책 및 정합성)
-    # 미성년자 및 민감 관심사
-    sensitive_interests = ["ADULT", "ALCOHOL", "DRUGS", "술", "성인", "도박"]
+    # 4. 정합성 및 키워드 검증
+    sensitive_keywords = ["ADULT", "ALCOHOL", "DRUGS", "술", "성인", "도박", "진로", "참이슬"]
     is_minor = age_numbers[0] <= 19 or age_numbers[1] <= 19
-    has_sensitive = any(si in i.upper() for i in interests for si in sensitive_interests)
+    has_sensitive = any(sk in i.upper() for i in interests for sk in sensitive_keywords)
     
     if is_minor and has_sensitive:
-        warnings.append("미성년자 타겟팅에 부적절한 키워드가 포함되어 있습니다.")
+        warnings.append("미성년자 타겟팅에 민감한 관심사 키워드가 포함되어 있습니다.")
     elif has_sensitive:
-        warnings.append("민감한 관심사 키워드가 포함되어 있어 플랫폼 심사가 엄격할 수 있습니다.")
+        warnings.append("민감한 관심사 키워드가 포함되어 있습니다.")
 
-    # 지역-관심사 불일치 (예: 서울 거주자에게 제주도 맛집 광고)
+    major_regions = ["SEOUL", "BUSAN", "JEJU", "DAEGU", "INCHEON", "GYEONGGI", "GUMI"]
     for interest in interests:
-        for reg_key in ["SEOUL", "BUSAN", "JEJU", "DAEGU", "INCHEON"]:
+        for reg_key in major_regions:
             if reg_key in interest.upper() and reg_key != region_upper:
-                warnings.append(f"타겟 지역({region_upper})과 관심사 키워드({interest})가 일치하지 않습니다.")
+                warnings.append(f"설정 지역({region_upper})과 관심사 키워드({interest}) 간의 지역 정보가 일치하지 않습니다.")
 
     # 5. 응답 구성
     response = {
@@ -72,16 +75,13 @@ def validate_targeting_conditions(
             "gender": normalized_gender,
             "interests": [i.upper() for i in interests],
             "region": region_upper
-        }
+        },
+        "status": "주의" if warnings else "정상",
+        "message": "설정된 타겟 조합에 보충 가이드가 있습니다." if warnings else "타겟 설정이 논리적으로 유효합니다."
     }
 
     if warnings:
-        response["warnings"] = list(set(warnings)) # 중복 제거
-        response["status"] = "주의"
-        response["message"] = "설정된 타겟 조합에 보충 가이드가 있습니다."
-    else:
-        response["status"] = "정상"
-        response["message"] = "타겟 설정이 논리적으로 유효합니다."
+        response["warnings"] = list(set(warnings))
 
     return response
 
