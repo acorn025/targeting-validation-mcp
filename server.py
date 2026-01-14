@@ -7,7 +7,6 @@ def validate_targeting_conditions(
     age_range: str,
     gender: str,
     interests: list,
-    budget: int,
     region: str
 ) -> dict:
     warnings = []
@@ -16,14 +15,7 @@ def validate_targeting_conditions(
     # -----------------
     # 실패 조건 (입력 자체 오류)
     # -----------------
-    allowed_regions = ["SEOUL", "BUSAN", "ALL"]
-    if region.upper() not in allowed_regions:
-        return {
-            "success": False,
-            "error": "타겟 조건 검증 실패. 입력값을 확인해주세요."
-        }
-
-    if not (0 < budget <= 100000000):
+    if not age_range or not gender or not interests or not region:
         return {
             "success": False,
             "error": "타겟 조건 검증 실패. 입력값을 확인해주세요."
@@ -32,10 +24,28 @@ def validate_targeting_conditions(
     # -----------------
     # 경고 조건
     # -----------------
-    if age_range == "13-17" and any(
-        interest.upper() in ["FINANCE", "INVESTMENT"] for interest in interests
-    ):
-        warnings.append("미성년자 연령대에 금융/투자 관심사 포함")
+    # 1. 미성년자(1~19세) 또는 민감 관심사 포함
+    sensitive_interests = ["ADULT", "ALCOHOL", "DRUGS"]
+    try:
+        age_numbers = [int(a) for a in age_range.replace(" ", "").split("-")]
+    except:
+        age_numbers = [0, 0]  # 파싱 실패 시 안전 처리
+    if (age_numbers[0] <= 19) or any(i.upper() in sensitive_interests for i in interests):
+        warnings.append("미성년자 연령대이거나 민감 관심사 포함")
+        warnings.append("일부 광고 정책에서 제한될 수 있음")
+
+    # 2. 지역/관심사 불일치
+    region_upper = region.upper()
+    for interest in interests:
+        for reg in ["SEOUL","BUSAN","DAEGU","INCHEON","GWANGJU","DAEJEON","GYEONGGI"]:
+            if reg in interest.upper() and reg != region_upper:
+                warnings.append(f"관심사 '{interest}'가 입력 지역 '{region}'과 일치하지 않음")
+                warnings.append("일부 광고 정책에서 제한될 수 있음")
+
+    # 3. 위험 상품 포함
+    risk_items = ["DRUG", "ILLEGAL"]
+    if any(ri in [i.upper() for i in interests] for ri in risk_items):
+        warnings.append("광고 금지/위험 상품 포함")
         warnings.append("일부 광고 정책에서 제한될 수 있음")
 
     # -----------------
@@ -45,8 +55,7 @@ def validate_targeting_conditions(
         "age_range_valid": True if age_range else False,
         "gender_valid": True if gender else False,
         "interests_valid": True if interests else False,
-        "budget_valid": True if 0 < budget <= 100000000 else False,
-        "region_valid": True if region.upper() in allowed_regions else False
+        "region_valid": True if region else False
     })
 
     # -----------------
@@ -57,8 +66,7 @@ def validate_targeting_conditions(
             "age_range": age_range,
             "gender": gender.upper(),
             "interests": [i.upper() for i in interests],
-            "budget": budget,
-            "region": region.upper()
+            "region": region_upper
         },
         "validation_details": validation_details
     }
