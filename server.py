@@ -73,7 +73,7 @@ def validate_targeting_conditions(
 
     if warnings:
         response["warnings"] = warnings
-        response["warning_text"] = "시스템 오류는 아니나, 실제 집행 전 정책 검토를 권장합니다."
+        response["warning_text"] = "선택하신 타겟 조합에 주의 사항이 발견되었습니다. 광고 플랫폼의 최신 가이드를 함께 확인해 주세요."
     else:
         response["success_text"] = "입력한 타겟 조건이 정책상 문제없이 검증되었습니다."
 
