@@ -76,19 +76,37 @@ def validate_targeting_conditions(
             if p[:2] in interest.upper() and (not province_found or p[:2] not in province_found):
                 warnings.append(f"정합성 주의: 관심사({interest})와 설정 지역({region_input})이 일치하지 않습니다.")
 
-    # (2) 민감 키워드 및 미성년자 보호 체크
+    # (2) 민감 카테고리 및 미성년자 보호 체크 (카테고리 기반 개선)
     is_minor = age_numbers[0] <= 19 or age_numbers[1] <= 19
-    sensitive_keywords = ["ADULT", "ALCOHOL", "DRUGS", "술", "성인", "도박", "진로", "참이슬"]
-    has_sensitive = any(sk in i.upper() for i in interests for sk in sensitive_keywords)
     
-    if is_minor and has_sensitive:
-        warnings.append("미성년자 타겟팅에 민감한 관심사 키워드가 포함되어 있습니다.")
-    elif has_sensitive:
-        warnings.append("민감한 관심사 키워드가 포함되어 있습니다.")
+    # 금칙어 카테고리 맵핑
+    forbidden_categories = {
+        "주류": ["술", "음주", "주류", "ALCOHOL", "BEER", "WINE", "WHISKY", "위스키", "소주", "맥주", "진로", "참이슬"],
+        "약물": ["마약", "DRUGS", "약물", "환각", "대마", "CANNABIS", "필로폰"],
+        "성인/사행성": ["ADULT", "성인", "도박", "CASINO", "GAMBLING", "유흥"]
+    }
+    
+    detected_categories = []
+    for interest in interests:
+        upper_interest = interest.upper()
+        for category, keywords in forbidden_categories.items():
+            if any(k in upper_interest for k in keywords):
+                detected_categories.append(category)
+
+    detected_categories = list(set(detected_categories))
+
+    if detected_categories:
+        if is_minor:
+            # 미성년자 관련 위반 시 status를 '오류'로 만들기 위한 문구
+            warnings.append(f"위반: 미성년자 대상 {', '.join(detected_categories)} 관련 타겟팅은 법적으로 금지됩니다.")
+        else:
+            # 요청하신 중립적인 문구로 적용
+            warnings.append(f"민감한 카테고리({', '.join(detected_categories)})가 포함되어 있습니다.")
 
     # --- 6. 응답 구성 ---
     status = "정상"
-    if any("불일치" in w or "위반" in w for w in warnings):
+    # '위반' 또는 '불일치'가 포함된 경우 status를 '오류'로 격상
+    if any("위반" in w or "불일치" in w for w in warnings):
         status = "오류"
     elif warnings:
         status = "주의"
@@ -102,7 +120,7 @@ def validate_targeting_conditions(
         },
         "status": status,
         "warnings": list(set(warnings)),
-        "message": "타겟 설정에 보충 가이드가 있습니다." if warnings else "타겟 설정이 논리적으로 유효합니다.",
+        "message": "타겟 설정에 정책 검토가 필요합니다." if status in ["오류", "주의"] else "타겟 설정이 논리적으로 유효합니다.",
         "reasoning": f"성별/지역/연령 데이터를 표준화하고 {len(PROVINCES)}개 광역지자체 기반 정합성 검토를 완료했습니다."
     }
 
